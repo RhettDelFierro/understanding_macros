@@ -19,7 +19,42 @@ defmodule Translator do
     end
   end
 
+# the translations are the list of attribute registrations. - in this case @locales will have a list of registrations which are functions: {name, mappings}.
   def compile(translations) do
     #return AST for all translation function definitions.
+
+    #locale code generation:
+    translations_ast = for {locale, mappings} <- translations do #list of function generations
+      deftranslations(locale, "", mappings)
+    end
+
+    quote do # we're generating the functions here. - producing the AST for the caller.
+      def t(locale, path, bindings \\ [])
+      unquote(translations_ast) #traslations_ast will be what t executes given the arguments to t.
+      def t(_locale, _path, _bindings), do: {:error, :no_translation} #catch all
+    end
   end
+
+  defp deftranslations(locale, current_path, mappings) do
+    #return an ast of the t/3 function defs for the given locale
+    for {key, val} <- mappings do
+      path = append_path(current_path, key)
+      if Keyword.keyword?(val) do
+        deftranslations(locale, path, val)
+      else
+        quote do
+          def t(unquote(locale), unquote(path), bindings) do
+            unquote(interpolate(val))
+          end
+        end
+      end
+    end
+  end
+
+  defp interpolate(string) do
+    string #interpolate bindings within string - what shows on the screen in the %{name} stuff in i18n.exs
+  end
+
+  defp append_path("", next), do: to_string(next)
+  defp append_path(current, next), do: "#{current}.#{next}"
 end
