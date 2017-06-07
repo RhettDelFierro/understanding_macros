@@ -1,7 +1,20 @@
 defmodule Html do
 
+  @external_resource tags_path = Path.join([__DIR__, "tags.txt"]) #ensures that whenever tags.txt is changed, this module will recompile.
+  @tags (for line <- File.stream!(tags_path, [], :line) do
+    line |> String.strip |> String.to_atom
+  end)
+
+  for tag <- @tags do
+    defmacro unquote(tag)(do: inner) do #defining a macro by each tag name.
+      tag = unquote(tag)
+      quote do: tag(unquote(tag), do: unquote(inner)) #logic for calling the tag.
+    end
+  end
+
   defmacro markup(do: block) do
     quote do
+      import Kernel, except: [div: 2]
       {:ok, var!(buffer, Html)} = start_buffer([]) #{:ok, var!(buffer, Html)} = {:ok, (state,Context)}
       unquote(block)
       result = render(var!(buffer, Html))
