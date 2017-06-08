@@ -5,28 +5,30 @@ defmodule Html do
     line |> String.strip |> String.to_atom
   end)
 
-  for tag <- @tags do
-    defmacro unquote(tag)(attrs, do: inner) do #defining a macro by each tag name.
-      tag = unquote(tag)
-      quote do: tag(unquote(tag), unquote(attrs), do: unquote(inner)) #logic for calling the tag.
-    end
-
-    defmacro unquote(tag)(attrs \\ [])do
-      tag = unquote(tag)
-      quote do: tag(unquote(tag), unquote(attrs))
-    end
-  end
-
   defmacro markup(do: block) do
     quote do
       import Kernel, except: [div: 2]
       {:ok, var!(buffer, Html)} = start_buffer([]) #{:ok, var!(buffer, Html)} = {:ok, (state,Context)}
-      unquote(block)
+      unquote(Macro.postwalk(block, &postwalk/1))
       result = render(var!(buffer, Html))
       :ok = stop_buffer(var!(buffer, Html))
       result
     end
   end
+
+  def postwalk({:text, _meta, [string]}) do
+    quote do: put_buffer(var!(buffer, HTML), to_string(unquote(string)))
+  end
+
+  def postwalk({tag_name, _meta, [[do: inner]]}) when tag_name in @tags do #patter match on all 117 html tags
+    quote do: tag(unquote(tag_name), [], do: unquote(inner)) #converting the tag name into a tag macro - no attributes
+  end
+
+  def postwalk({tag_name, _meta, [attrs, [do: inner]]}) when tag_name in @tags do
+    quote do: tag(unquote(tag_name), unquote(attrs), do: unquote(inner)) #converting a tag with attributes to a macro.
+  end
+
+  def postwalk(ast), do: ast #return any segment untouched that we don't identify as part of our dsl.
 
   def start_buffer(state), do: Agent.start_link(fn -> state end)
 
@@ -36,15 +38,10 @@ defmodule Html do
 
   def render(buff), do: Agent.get(buff, &(&1)) |> Enum.reverse |> Enum.join("")
 
-  defmacro tag(name, attrs \\ []) do
-    {inner, attrs} = Dict.pop(attrs, :do)
-    quote do: tag(unquote(name), unquote(attrs), do: unquote(inner))
-  end
-
-  defmacro tag(name, attrs, do: inner) do
+  defmacro tag(name, attrs \\ [], do: inner) do
     quote do
       put_buffer var!(buffer, Html), open_tag(unquote_splicing([name, attrs]))
-      unquote(inner)
+      unquote(postwalk(inner))
       put_buffer var!(buffer, Html), "</#{unquote(name)}>"
     end
   end
