@@ -1,4 +1,5 @@
 defmodule Mod do
+
   defmacro definfo do
     IO.puts "In macro's context #{__MODULE__}'"
     quote do
